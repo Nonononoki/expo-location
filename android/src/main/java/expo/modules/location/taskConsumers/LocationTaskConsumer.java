@@ -14,13 +14,6 @@ import android.os.IBinder;
 import android.os.PersistableBundle;
 import android.util.Log;
 
-import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationRequest;
-import com.google.android.gms.location.LocationResult;
-import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.tasks.OnCompleteListener;
-import com.google.android.gms.tasks.Task;
-
 import expo.modules.core.MapHelper;
 import expo.modules.core.arguments.MapArguments;
 import expo.modules.core.arguments.ReadableArguments;
@@ -28,11 +21,9 @@ import expo.modules.core.interfaces.Arguments;
 import expo.modules.core.interfaces.LifecycleEventListener;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import androidx.annotation.NonNull;
 import expo.modules.location.LocationHelpers;
 import expo.modules.location.services.LocationTaskService;
 import expo.modules.interfaces.taskManager.TaskConsumer;
@@ -44,14 +35,10 @@ import expo.modules.interfaces.taskManager.TaskManagerUtilsInterface;
 public class LocationTaskConsumer extends TaskConsumer implements TaskConsumerInterface, LifecycleEventListener {
   private static final String TAG = "LocationTaskConsumer";
   private static final String FOREGROUND_SERVICE_KEY = "foregroundService";
-  public static int VERSION = 1;
   private static long sLastTimestamp = 0;
 
   private TaskInterface mTask;
-  private PendingIntent mPendingIntent;
   private LocationTaskService mService;
-  private LocationRequest mLocationRequest;
-  private FusedLocationProviderClient mLocationClient;
   private Location mLastReportedLocation;
   private double mDeferredDistance = 0.0;
   private List<Location> mDeferredLocations = new ArrayList<>();
@@ -79,9 +66,6 @@ public class LocationTaskConsumer extends TaskConsumer implements TaskConsumerIn
     stopLocationUpdates();
     stopForegroundService();
     mTask = null;
-    mPendingIntent = null;
-    mLocationRequest = null;
-    mLocationClient = null;
   }
 
   @Override
@@ -98,39 +82,6 @@ public class LocationTaskConsumer extends TaskConsumer implements TaskConsumerIn
 
   @Override
   public void didReceiveBroadcast(Intent intent) {
-    if (mTask == null) {
-      return;
-    }
-
-    LocationResult result = LocationResult.extractResult(intent);
-
-    if (result != null) {
-      List<Location> locations = result.getLocations();
-
-      deferLocations(locations);
-      maybeReportDeferredLocations();
-    } else {
-      try {
-        if(mLocationClient == null){
-          Log.w(TAG, "LocationClient is null.");
-          return;
-        }
-        mLocationClient.getLastLocation().addOnCompleteListener(new OnCompleteListener<Location>() {
-          @Override
-          public void onComplete(@NonNull Task<Location> task) {
-            Location location = task.getResult();
-
-            if (location != null) {
-              Log.i(TAG, "get last location: " + location);
-              deferLocations(Collections.singletonList(location));
-              maybeReportDeferredLocations();
-            }
-          }
-        });
-      } catch (SecurityException e) {
-        Log.e(TAG, "Cannot get last location: " + e.getMessage());
-      }
-    }
   }
 
   @Override
@@ -180,23 +131,9 @@ public class LocationTaskConsumer extends TaskConsumer implements TaskConsumerIn
       Log.w(TAG, "There is no location provider available.");
       return;
     }
-
-    mLocationRequest = LocationHelpers.prepareLocationRequest(mTask.getOptions());
-    mPendingIntent = preparePendingIntent();
-
-    try {
-      mLocationClient = LocationServices.getFusedLocationProviderClient(context);
-      mLocationClient.requestLocationUpdates(mLocationRequest, mPendingIntent);
-    } catch (SecurityException e) {
-      Log.w(TAG, "Location request has been rejected.", e);
-    }
   }
 
   private void stopLocationUpdates() {
-    if (mLocationClient != null && mPendingIntent != null) {
-      mLocationClient.removeLocationUpdates(mPendingIntent);
-      mPendingIntent.cancel();
-    }
   }
 
   private void maybeStartForegroundService() {
@@ -328,10 +265,6 @@ public class LocationTaskConsumer extends TaskConsumer implements TaskConsumerIn
     long interval = options.getLong("deferredUpdatesInterval");
 
     return newestLocation.getTime() - oldestLocation.getTime() >= interval && mDeferredDistance >= distance;
-  }
-
-  private PendingIntent preparePendingIntent() {
-    return getTaskManagerUtils().createTaskIntent(getContext(), mTask);
   }
 
   private void executeTaskWithLocationBundles(ArrayList<Bundle> locationBundles, TaskExecutionCallback callback) {

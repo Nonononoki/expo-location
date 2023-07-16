@@ -10,14 +10,7 @@ import android.os.Bundle;
 import android.os.PersistableBundle;
 import android.util.Log;
 
-import com.google.android.gms.location.LocationRequest;
-
 import java.util.Map;
-
-import expo.modules.core.Promise;
-import expo.modules.core.errors.CodedException;
-import io.nlopez.smartlocation.location.config.LocationAccuracy;
-import io.nlopez.smartlocation.location.config.LocationParams;
 
 import static expo.modules.location.LocationModule.*;
 
@@ -119,78 +112,6 @@ public class LocationHelpers {
     return heading;
   }
 
-  public static LocationRequest prepareLocationRequest(Map<String, Object> options) {
-    LocationParams locationParams = LocationHelpers.mapOptionsToLocationParams(options);
-    int accuracy = LocationHelpers.getAccuracyFromOptions(options);
-
-    return new LocationRequest()
-        .setFastestInterval(locationParams.getInterval())
-        .setInterval(locationParams.getInterval())
-        .setMaxWaitTime(locationParams.getInterval())
-        .setSmallestDisplacement(locationParams.getDistance())
-        .setPriority(mapAccuracyToPriority(accuracy));
-  }
-
-  public static LocationParams mapOptionsToLocationParams(Map<String, Object> options) {
-    int accuracy = getAccuracyFromOptions(options);
-
-    LocationParams.Builder locationParamsBuilder = buildLocationParamsForAccuracy(accuracy);
-
-    if (options.containsKey("timeInterval")) {
-      Number timeInterval = (Number) options.get("timeInterval");
-      locationParamsBuilder.setInterval(timeInterval.longValue());
-    }
-    if (options.containsKey("distanceInterval")) {
-      Number distanceInterval = (Number) options.get("distanceInterval");
-      locationParamsBuilder.setDistance(distanceInterval.floatValue());
-    }
-    return locationParamsBuilder.build();
-  }
-
-  static void requestSingleLocation(final LocationModule locationModule, final LocationRequest locationRequest, final Promise promise) {
-    // we want just one update
-    locationRequest.setNumUpdates(1);
-
-    locationModule.requestLocationUpdates(locationRequest, null, new LocationRequestCallbacks() {
-      @Override
-      public void onLocationChanged(Location location) {
-        promise.resolve(LocationHelpers.locationToBundle(location, Bundle.class));
-      }
-
-      @Override
-      public void onLocationError(CodedException exception) {
-        promise.reject(exception);
-      }
-
-      @Override
-      public void onRequestFailed(CodedException exception) {
-        promise.reject(exception);
-      }
-    });
-  }
-
-  static void requestContinuousUpdates(final LocationModule locationModule, final LocationRequest locationRequest, final int watchId, final Promise promise) {
-    locationModule.requestLocationUpdates(locationRequest, watchId, new LocationRequestCallbacks() {
-      @Override
-      public void onLocationChanged(Location location) {
-        Bundle response = new Bundle();
-
-        response.putBundle("location", LocationHelpers.locationToBundle(location, Bundle.class));
-        locationModule.sendLocationResponse(watchId, response);
-      }
-
-      @Override
-      public void onRequestSuccess() {
-        promise.resolve(null);
-      }
-
-      @Override
-      public void onRequestFailed(CodedException exception) {
-        promise.reject(exception);
-      }
-    });
-  }
-
   /**
    * Checks whether given location didn't exceed given `maxAge` and fits in the required accuracy.
    */
@@ -210,57 +131,6 @@ public class LocationHelpers {
 
   private static int getAccuracyFromOptions(Map<String, Object> options) {
     return options.containsKey("accuracy") ? ((Number) options.get("accuracy")).intValue() : ACCURACY_BALANCED;
-  }
-
-  private static LocationParams.Builder buildLocationParamsForAccuracy(int accuracy) {
-    switch (accuracy) {
-      case ACCURACY_LOWEST:
-        return new LocationParams.Builder()
-            .setAccuracy(LocationAccuracy.LOWEST)
-            .setDistance(3000)
-            .setInterval(10000);
-      case ACCURACY_LOW:
-        return new LocationParams.Builder()
-            .setAccuracy(LocationAccuracy.LOW)
-            .setDistance(1000)
-            .setInterval(5000);
-      case ACCURACY_BALANCED:
-      default:
-        return new LocationParams.Builder()
-            .setAccuracy(LocationAccuracy.MEDIUM)
-            .setDistance(100)
-            .setInterval(3000);
-      case ACCURACY_HIGH:
-        return new LocationParams.Builder()
-            .setAccuracy(LocationAccuracy.HIGH)
-            .setDistance(50)
-            .setInterval(2000);
-      case ACCURACY_HIGHEST:
-        return new LocationParams.Builder()
-            .setAccuracy(LocationAccuracy.HIGH)
-            .setDistance(25)
-            .setInterval(1000);
-      case ACCURACY_BEST_FOR_NAVIGATION:
-        return new LocationParams.Builder()
-            .setAccuracy(LocationAccuracy.HIGH)
-            .setDistance(0)
-            .setInterval(500);
-    }
-  }
-
-  private static int mapAccuracyToPriority(int accuracy) {
-    switch (accuracy) {
-      case LocationModule.ACCURACY_BEST_FOR_NAVIGATION:
-      case LocationModule.ACCURACY_HIGHEST:
-      case LocationModule.ACCURACY_HIGH:
-        return LocationRequest.PRIORITY_HIGH_ACCURACY;
-      case LocationModule.ACCURACY_BALANCED:
-      case LocationModule.ACCURACY_LOW:
-      default:
-        return LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY;
-      case LocationModule.ACCURACY_LOWEST:
-        return LocationRequest.PRIORITY_LOW_POWER;
-    }
   }
 
   //endregion
